@@ -1,4 +1,4 @@
-class Automaton {
+export class Automaton {
   constructor(width, height, updateWeight = 0.05, kernel = Automaton.INITIAL_KERNEL) {
     this.width = width;
     this.height = height;
