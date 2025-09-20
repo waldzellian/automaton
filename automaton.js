@@ -1,64 +1,50 @@
-export class AutomatonState {
-  constructor(width, height, updateWeight = 0.05, kernel = AutomatonState.INITIAL_KERNEL) {
-    this.width = width;
-    this.height = height;
-    this.updateWeight = updateWeight;
-    this.kernel = kernel;
-
-    this.current = Array.from({ length: height }, () => new Float32Array(width));
-    this.previous = Array.from({ length: height }, () => new Float32Array(width));
+export class Kernel {
+  constructor(weights) {
+    this.weights = weights;
   }
 
-  static FULL_KERNEL = [
+  static OFFSETS = [
     [-1, -1], [-1,  0], [-1,  1],
     [ 0, -1],           [ 0,  1],
     [ 1, -1], [ 1,  0], [ 1,  1]
   ];
 
-  static INITIAL_KERNEL = [
-    [-1, -1], [-1,  0],
-    [ 0, -1],           [ 0,  1],
-              [ 1,  0], [ 1,  1]
-  ];
-
-  static shuffle(array) {
-    const arr = Array.from(array);
-    for (let i = arr.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [arr[i], arr[j]] = [arr[j], arr[i]];
-    }
-    return arr;
+  total() {
+    return this.weights.reduce((a, b) => a + b, 0);
   }
 
-  randomizeKernel(size) {
-    this.kernel = AutomatonState.shuffle(AutomatonState.FULL_KERNEL).slice(0, size);
+  static random() {
+    return new Kernel(Array.from({ length: 8 }, () => Math.floor(Math.random() * 2)));
+  }
+}
+
+export class AutomatonState {
+  constructor(width, height) {
+    this.width = width;
+    this.height = height;
+
+    this.current = Array.from({ length: height }, () => new Float32Array(width));
+    this.previous = Array.from({ length: height }, () => new Float32Array(width));
   }
 
-  randomizeCells() {
-    for (let i = 0; i < this.height; i++) {
-      for (let j = 0; j < this.width; j++) {
-        this.current[i][j] = Math.random();
-      }
-    }
-  }
-
-  step() {
+  step(kernel, updateWeight = 0.05) {
     [this.current, this.previous] = [this.previous, this.current];
 
-    for (let i = 0; i < this.height; i++) {
-      for (let j = 0; j < this.width; j++) {
-        const original = this.previous[i][j];
+    for (let i = 0; i < this.height; ++i) {
+      for (let j = 0; j < this.width; ++j) {
         let neighborhood = 0.0;
 
-        for (const [di, dj] of this.kernel) {
-          const ni = (i + di + this.height) % this.height;
-          const nj = (j + dj + this.width) % this.width;
-          neighborhood += this.previous[ni][nj];
+        for (let k = 0; k < Kernel.OFFSETS.length; ++k) {
+          const ni = (i + Kernel.OFFSETS[k][0] + this.height) % this.height;
+          const nj = (j + Kernel.OFFSETS[k][1] + this.width) % this.width;
+          neighborhood += this.previous[ni][nj] * kernel.weights[k];
         }
 
-        const average = neighborhood / this.kernel.length;
+        const original = this.previous[i][j];
+        const average = neighborhood / kernel.total();
         const delta = Math.sin(Math.PI * 2 * average);
-        this.current[i][j] = (1.0 - this.updateWeight) * original + this.updateWeight * delta;
+
+        this.current[i][j] = (1.0 - updateWeight) * original + updateWeight * delta;
       }
     }
   }
@@ -85,5 +71,33 @@ export class AutomatonState {
     }
 
     context.putImageData(imageData, 0, 0);
+  }
+
+  save() {
+    const buffer = new ArrayBuffer(this.width * this.height * 4);
+    const view = new Float32Array(buffer);
+
+    for (let y = 0; y < this.height; y++) {
+      view.set(this.current[y], y * this.width);
+    }
+
+    return new Int8Array(buffer);
+  }
+
+  load(bytes) {
+    const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+    const view = new Float32Array(buffer);
+
+    for (let y = 0; y < this.height; y++) {
+      this.current[y].set(view.subarray(y * this.width, (y + 1) * this.width));
+    }
+  }
+
+  randomize() {
+    for (let i = 0; i < this.height; i++) {
+      for (let j = 0; j < this.width; j++) {
+        this.current[i][j] = Math.random();
+      }
+    }
   }
 }
